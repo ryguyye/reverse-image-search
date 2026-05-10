@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, scheduler, watches
+from .config import settings
 from .models import (
     ProviderInfo,
     ScanResponse,
@@ -21,8 +22,9 @@ from .scanning import run_scan
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "static"
-UPLOAD_DIR = ROOT / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+_uploads = Path(settings.uploads_dir)
+UPLOAD_DIR = _uploads if _uploads.is_absolute() else (ROOT / _uploads).resolve()
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024

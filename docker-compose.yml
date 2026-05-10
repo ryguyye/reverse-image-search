@@ -1,0 +1,28 @@
+services:
+  selfwatch:
+    build: .
+    image: selfwatch:latest
+    container_name: selfwatch
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - selfwatch_data:/app/data
+
+  # Optional Cloudflare Tunnel sidecar. Create a tunnel + grab the token at
+  # https://one.dash.cloudflare.com/  → Networks → Tunnels, then set TUNNEL_TOKEN
+  # in your .env. The tunnel routes its hostname to http://selfwatch:8000.
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cloudflared
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  #   depends_on:
+  #     - selfwatch
+
+volumes:
+  selfwatch_data:
