@@ -1,0 +1,22 @@
+# Named Cloudflare Tunnel config. Copy to ~/.cloudflared/config.yml on the host
+# running cloudflared and edit the placeholders, then run:
+#   cloudflared tunnel run selfwatch
+#
+# Prerequisites (one-time):
+#   cloudflared tunnel login
+#   cloudflared tunnel create selfwatch
+#   cloudflared tunnel route dns selfwatch selfwatch.yourdomain.com
+
+tunnel: REPLACE-WITH-TUNNEL-UUID
+credentials-file: /home/you/.cloudflared/REPLACE-WITH-TUNNEL-UUID.json
+
+ingress:
+  - hostname: selfwatch.yourdomain.com
+    service: http://localhost:8000
+    originRequest:
+      # Reverse-image scans can take 10-30s; bump these from the 100s defaults
+      # if you ever see Cloudflare 524 timeouts.
+      connectTimeout: 30s
+      tlsTimeout: 10s
+      noTLSVerify: false
+  - service: http_status:404

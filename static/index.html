@@ -88,7 +88,7 @@
           <div>
             <label for="file">…or upload a file</label>
             <input id="file" name="file" type="file" accept="image/*" />
-            <p class="providers">Uploads are saved to <code>./uploads</code> and served at <code>/uploads/&lt;name&gt;</code>. The app must be reachable from the public internet for SerpAPI to fetch them — use a deployed instance or a tunnel like <code>ngrok</code>.</p>
+            <p class="providers">Uploads are saved to <code>./uploads</code> and served at <code>/uploads/&lt;name&gt;</code>. The app must be reachable from the public internet for SerpAPI to fetch them — easiest path is <code>make tunnel</code> (Cloudflare). See <code>docs/deploy.md</code>.</p>
           </div>
           <div>
             <button id="submit-btn" type="submit">Scan</button>

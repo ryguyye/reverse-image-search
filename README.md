@@ -29,30 +29,28 @@ Only providers with credentials configured will run. If none are configured, the
 ## Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-cp .env.example .env
-# edit .env and add SERPAPI_KEY
+make install
+cp .env.example .env       # edit and add SERPAPI_KEY
+make dev                   # http://localhost:8000
 ```
 
-Run the server:
-
-```bash
-uvicorn selfwatch.main:app --app-dir src --reload --port 8000
-```
-
-Then open <http://localhost:8000>.
+Other targets: `make run` (production-ish, with proxy headers), `make tunnel` (Cloudflare quick tunnel), `make test` (lint + pytest), `make clean`.
 
 ## Uploading vs. providing a URL
 
-The current providers (Google Lens, Yandex via SerpAPI) require a **publicly reachable image URL**. If you upload a file, the app saves it under `./uploads/` and serves it at `/uploads/<name>`. For SerpAPI to fetch it, your instance must be reachable from the public internet — either:
+The current providers (Google Lens, Yandex via SerpAPI) require a **publicly reachable image URL**. If you upload a file, the app saves it under `./uploads/` and serves it at `/uploads/<name>`. For SerpAPI to fetch it, your instance has to be on the public internet.
 
-- deploy the app to a public host, or
-- expose your local server with a tunnel: `ngrok http 8000`, then set `--forwarded-allow-ips="*"` and use the ngrok URL when accessing the UI.
+The recommended path is **Cloudflare Tunnel** — see [docs/deploy.md](docs/deploy.md). Quick start:
 
-If those constraints don't fit your setup, host the image somewhere stable (your own site, S3, etc.) and paste the URL into the form.
+```bash
+make dev          # in one terminal
+make tunnel       # in another; prints a https://*.trycloudflare.com URL
+# add PUBLIC_BASE_URL=https://that-url to .env, restart the app
+```
+
+For a stable URL on your own domain, follow the named-tunnel section of `docs/deploy.md`. You can also layer **Cloudflare Access** on top to put SSO in front of the app without writing any auth code.
+
+If a tunnel doesn't fit your setup, host the image somewhere stable (your own site, S3, etc.) and paste the URL into the form.
 
 ## Recurring scans (watches)
 
