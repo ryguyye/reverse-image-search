@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urlunparse
 
 from . import db
 from .config import settings
-from .models import Match, Watch, WatchRunResult
+from .models import Match, SeenMatch, Watch, WatchRunResult
 from .notifier import send_webhook
 from .scanning import run_scan
 
@@ -65,6 +65,41 @@ def delete(watch_id: int) -> bool:
     with db.connect() as conn:
         cur = conn.execute("DELETE FROM watches WHERE id = ?", (watch_id,))
     return cur.rowcount > 0
+
+
+def set_active(watch_id: int, active: bool) -> Watch | None:
+    with db.connect() as conn:
+        cur = conn.execute(
+            "UPDATE watches SET active = ? WHERE id = ?",
+            (1 if active else 0, watch_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()
+    return _row_to_watch(row)
+
+
+def list_matches(watch_id: int, *, limit: int = 50, offset: int = 0) -> list[SeenMatch]:
+    with db.connect() as conn:
+        rows = conn.execute(
+            """SELECT canonical_url, domain, title, thumbnail_url, sources, first_seen_at
+               FROM seen_matches
+               WHERE watch_id = ?
+               ORDER BY first_seen_at DESC, canonical_url ASC
+               LIMIT ? OFFSET ?""",
+            (watch_id, limit, offset),
+        ).fetchall()
+    return [
+        SeenMatch(
+            canonical_url=r["canonical_url"],
+            domain=r["domain"],
+            title=r["title"],
+            thumbnail_url=r["thumbnail_url"],
+            sources=json.loads(r["sources"]) if r["sources"] else [],
+            first_seen_at=r["first_seen_at"],
+        )
+        for r in rows
+    ]
 
 
 def due(now: datetime) -> list[Watch]:

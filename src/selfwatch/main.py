@@ -11,8 +11,10 @@ from . import db, scheduler, watches
 from .models import (
     ProviderInfo,
     ScanResponse,
+    SeenMatch,
     Watch,
     WatchRunResult,
+    WatchUpdate,
 )
 from .providers import all_providers
 from .scanning import run_scan
@@ -52,6 +54,17 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/healthz")
+async def healthz() -> dict:
+    try:
+        with db.connect() as conn:
+            conn.execute("SELECT 1")
+        db_status = "ok"
+    except Exception as exc:
+        db_status = f"error: {exc}"
+    return {"status": "ok" if db_status == "ok" else "degraded", "db": db_status}
 
 
 @app.get("/api/providers", response_model=list[ProviderInfo])
@@ -168,6 +181,27 @@ async def get_watch(watch_id: int) -> Watch:
 async def delete_watch(watch_id: int) -> None:
     if not watches.delete(watch_id):
         raise HTTPException(status_code=404, detail="Watch not found.")
+
+
+@app.patch("/api/watches/{watch_id}", response_model=Watch)
+async def update_watch(watch_id: int, body: WatchUpdate) -> Watch:
+    if body.active is None:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    updated = watches.set_active(watch_id, body.active)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Watch not found.")
+    return updated
+
+
+@app.get("/api/watches/{watch_id}/matches", response_model=list[SeenMatch])
+async def list_watch_matches(
+    watch_id: int,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[SeenMatch]:
+    if watches.get(watch_id) is None:
+        raise HTTPException(status_code=404, detail="Watch not found.")
+    return watches.list_matches(watch_id, limit=limit, offset=offset)
 
 
 @app.post("/api/watches/{watch_id}/run", response_model=WatchRunResult)
