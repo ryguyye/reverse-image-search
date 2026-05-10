@@ -28,6 +28,8 @@ Only providers with credentials configured will run. If none are configured, the
 
 ## Setup
 
+Local dev:
+
 ```bash
 make install
 cp .env.example .env       # edit and add SERPAPI_KEY
@@ -35,6 +37,15 @@ make dev                   # http://localhost:8000
 ```
 
 Other targets: `make run` (production-ish, with proxy headers), `make tunnel` (Cloudflare quick tunnel), `make test` (lint + pytest), `make clean`.
+
+Docker:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+State (DB + uploads) lives on a named volume; the container runs as non-root and ships with a healthcheck. See [docs/deploy.md](docs/deploy.md) for the full deployment guide including the optional cloudflared sidecar.
 
 ## Uploading vs. providing a URL
 

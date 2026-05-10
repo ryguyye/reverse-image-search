@@ -1,5 +1,41 @@
 # Deploying selfwatch
 
+## Docker
+
+The fastest way to run selfwatch on a server.
+
+```bash
+cp .env.example .env       # edit and add SERPAPI_KEY etc.
+docker compose up -d --build
+docker compose logs -f selfwatch
+```
+
+The compose file:
+
+- builds the image from the local Dockerfile (Python 3.11-slim, runs as non-root user)
+- exposes port 8000
+- mounts a named volume `selfwatch_data` at `/app/data`, which holds both the SQLite DB and the uploads
+- includes an optional (commented-out) `cloudflared` sidecar — uncomment, set `TUNNEL_TOKEN` in `.env`, and you have a tunneled deployment in one command
+
+The container ships with `HEALTHCHECK` polling `/healthz`, so `docker ps` shows health status.
+
+To rebuild after code changes: `docker compose up -d --build`.
+
+To run without compose:
+
+```bash
+docker build -t selfwatch .
+docker run -d --name selfwatch \
+  -p 8000:8000 \
+  --env-file .env \
+  -v selfwatch_data:/app/data \
+  selfwatch
+```
+
+---
+
+
+
 The recurring-scans feature needs the app to be reachable from the public internet so search providers (SerpAPI's Google Lens / Yandex) can fetch your uploaded images. The simplest way to do that is **Cloudflare Tunnel** — a daemon you run alongside the app that connects out to Cloudflare and gets a public hostname. No port-forwarding, no firewall config, free TLS.
 
 This guide covers two flows:

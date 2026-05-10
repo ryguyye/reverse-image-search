@@ -1,0 +1,33 @@
+services:
+  selfwatch:
+    build: .
+    image: selfwatch:latest
+    container_name: selfwatch
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # Pin the data paths so .env can't accidentally move state off the volume.
+    # docker-compose's environment: takes precedence over env_file.
+    environment:
+      DB_PATH: /app/data/selfwatch.db
+      UPLOADS_DIR: /app/data/uploads
+    volumes:
+      - selfwatch_data:/app/data
+
+  # Optional Cloudflare Tunnel sidecar. Create a tunnel + grab the token at
+  # https://one.dash.cloudflare.com/  → Networks → Tunnels, then set TUNNEL_TOKEN
+  # in your .env. The tunnel routes its hostname to http://selfwatch:8000.
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cloudflared
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  #   depends_on:
+  #     - selfwatch
+
+volumes:
+  selfwatch_data:
