@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>selfwatch — self-monitoring reverse image search</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #111;
+        --muted: #555;
+        --bg: #fafafa;
+        --card: #fff;
+        --border: #e1e1e1;
+        --accent: #2255cc;
+        --error: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #eee;
+          --muted: #aaa;
+          --bg: #111;
+          --card: #1a1a1a;
+          --border: #2a2a2a;
+          --accent: #79a6ff;
+          --error: #ff7a72;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: var(--bg); color: var(--fg);
+        margin: 0; padding: 2rem 1rem; line-height: 1.5;
+      }
+      main { max-width: 880px; margin: 0 auto; }
+      h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+      p.lede { color: var(--muted); margin: 0 0 1.5rem; }
+      .card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;
+      }
+      label { display: block; font-weight: 600; margin: 0 0 .35rem; font-size: .9rem; }
+      input[type="text"], input[type="url"], input[type="file"] {
+        width: 100%; padding: .6rem .7rem; border: 1px solid var(--border);
+        border-radius: 6px; background: var(--bg); color: var(--fg); font-size: .95rem;
+      }
+      .row { display: grid; gap: .9rem; }
+      button {
+        background: var(--accent); color: #fff; border: 0; padding: .6rem 1rem;
+        border-radius: 6px; font-size: .95rem; cursor: pointer;
+      }
+      button:disabled { opacity: .6; cursor: progress; }
+      .providers { font-size: .85rem; color: var(--muted); margin-top: .75rem; }
+      .providers code { background: var(--bg); padding: 1px 5px; border-radius: 3px; }
+      .match {
+        display: grid; grid-template-columns: 80px 1fr; gap: .8rem;
+        padding: .75rem 0; border-bottom: 1px solid var(--border);
+      }
+      .match:last-child { border-bottom: 0; }
+      .match img {
+        width: 80px; height: 80px; object-fit: cover; border-radius: 4px;
+        background: var(--bg); border: 1px solid var(--border);
+      }
+      .match a { color: var(--accent); font-weight: 600; text-decoration: none; word-break: break-all; }
+      .match a:hover { text-decoration: underline; }
+      .match .meta { color: var(--muted); font-size: .85rem; }
+      .pill {
+        display: inline-block; padding: 1px 7px; border-radius: 999px;
+        background: var(--bg); border: 1px solid var(--border);
+        font-size: .75rem; margin-right: 4px;
+      }
+      .error { color: var(--error); }
+      .empty { color: var(--muted); font-style: italic; }
+      details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>selfwatch</h1>
+      <p class="lede">Upload your own photo (or paste a URL to one). The app queries reverse image search providers and shows where copies of that image appear online — useful for impersonation, scraping, or copyright monitoring.</p>
+
+      <form id="scan-form" class="card">
+        <div class="row">
+          <div>
+            <label for="image_url">Image URL</label>
+            <input id="image_url" name="image_url" type="url" placeholder="https://example.com/me.jpg" />
+          </div>
+          <div>
+            <label for="file">…or upload a file</label>
+            <input id="file" name="file" type="file" accept="image/*" />
+            <p class="providers">Uploads are saved to <code>./uploads</code> and served at <code>/uploads/&lt;name&gt;</code>. The app must be reachable from the public internet for SerpAPI to fetch them — use a deployed instance or a tunnel like <code>ngrok</code>.</p>
+          </div>
+          <div>
+            <button id="submit-btn" type="submit">Scan</button>
+          </div>
+        </div>
+        <div id="providers-info" class="providers"></div>
+      </form>
+
+      <div id="status"></div>
+      <div id="results"></div>
+    </main>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+
+      async function loadProviders() {
+        try {
+          const r = await fetch("/api/providers");
+          const data = await r.json();
+          const enabled = data.filter(p => p.enabled).map(p => p.name);
+          const disabled = data.filter(p => !p.enabled);
+          let html = enabled.length
+            ? `Enabled providers: ${enabled.map(n => `<code>${n}</code>`).join(", ")}.`
+            : `<span class="error">No providers enabled.</span> Set keys in <code>.env</code>.`;
+          if (disabled.length) {
+            html += " Disabled: " + disabled.map(p => `<code>${p.name}</code> (${p.note || "no key"})`).join(", ") + ".";
+          }
+          $("#providers-info").innerHTML = html;
+        } catch (e) {
+          $("#providers-info").innerHTML = `<span class="error">Failed to load providers: ${e}</span>`;
+        }
+      }
+
+      function renderMatches(payload) {
+        const wrap = $("#results");
+        if (!payload.matches.length) {
+          wrap.innerHTML = `<div class="card empty">No matches found.</div>`;
+          return;
+        }
+        const items = payload.matches.map(m => `
+          <div class="match">
+            <div>${m.thumbnail_url ? `<img src="${m.thumbnail_url}" alt="" loading="lazy" />` : `<div class="empty" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;">—</div>`}</div>
+            <div>
+              <div><a href="${m.url}" target="_blank" rel="noopener noreferrer">${m.title || m.url}</a></div>
+              <div class="meta">${m.domain}</div>
+              <div>${m.sources.map(s => `<span class="pill">${s}</span>`).join("")}</div>
+            </div>
+          </div>
+        `).join("");
+        wrap.innerHTML = `<div class="card"><strong>${payload.matches.length} match${payload.matches.length === 1 ? "" : "es"}</strong> from ${payload.providers_used.join(", ") || "(none)"}${items}</div>`;
+      }
+
+      function renderStatus(payload) {
+        const status = $("#status");
+        if (payload.providers_failed.length) {
+          status.innerHTML = `<div class="card"><details open><summary>${payload.providers_failed.length} provider error(s)</summary><ul>${payload.providers_failed.map(f => `<li><code>${f.name}</code>: ${f.error}</li>`).join("")}</ul></details></div>`;
+        } else {
+          status.innerHTML = "";
+        }
+      }
+
+      $("#scan-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = $("#submit-btn");
+        btn.disabled = true;
+        $("#results").innerHTML = `<div class="card empty">Scanning…</div>`;
+        $("#status").innerHTML = "";
+        try {
+          const fd = new FormData();
+          const url = $("#image_url").value.trim();
+          const file = $("#file").files[0];
+          if (url) fd.append("image_url", url);
+          if (file) fd.append("file", file);
+          const resp = await fetch("/api/scan", { method: "POST", body: fd });
+          const data = await resp.json();
+          if (!resp.ok) {
+            $("#results").innerHTML = `<div class="card error">${data.detail || "Request failed"}</div>`;
+            return;
+          }
+          renderStatus(data);
+          renderMatches(data);
+        } catch (e) {
+          $("#results").innerHTML = `<div class="card error">${e}</div>`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      loadProviders();
+    </script>
+  </body>
+</html>
