@@ -21,7 +21,7 @@ This tool is intentionally scoped to monitoring images you own or have rights to
 | --- | --- | --- | --- |
 | Google Lens | SerpAPI (`engine=google_lens`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
 | Yandex Images | SerpAPI (`engine=yandex_images`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
-| TinEye | Direct API | Upload or URL | Roadmap (HMAC-signed direct integration) |
+| TinEye | Direct API (HMAC-signed) | Upload or URL | Enabled when `TINEYE_API_KEY` and `TINEYE_PRIVATE_KEY` are set. **Experimental** — signing follows TinEye's documented spec but has not been validated against live credentials. |
 | Bing Visual Search | Microsoft API | Upload or URL | Roadmap |
 
 Only providers with credentials configured will run. If none are configured, the API returns 503.
@@ -54,9 +54,52 @@ The current providers (Google Lens, Yandex via SerpAPI) require a **publicly rea
 
 If those constraints don't fit your setup, host the image somewhere stable (your own site, S3, etc.) and paste the URL into the form.
 
+## Recurring scans (watches)
+
+You can save an image as a **watch** and have selfwatch re-scan it on a schedule. When new matches appear (URLs not seen on previous runs of that watch), it can POST a JSON payload to a webhook of your choice (Slack incoming webhook, Discord, Zapier, your own endpoint).
+
+```bash
+# Create a watch from a hosted image, run hourly, post new matches to Slack
+curl -X POST http://localhost:8000/api/watches \
+  -F "name=my profile pic" \
+  -F "cadence_minutes=60" \
+  -F "webhook_url=https://hooks.slack.com/services/..." \
+  -F "image_url=https://me.example/photo.jpg"
+```
+
+Webhook payload:
+
+```json
+{
+  "watch_id": 1,
+  "watch_name": "my profile pic",
+  "scanned_at": "2026-05-10T15:23:00+00:00",
+  "image_url": "https://me.example/photo.jpg",
+  "new_matches": [
+    {
+      "url": "https://impostor.example/profile",
+      "domain": "impostor.example",
+      "title": "...",
+      "thumbnail_url": "...",
+      "sources": ["google_lens"]
+    }
+  ]
+}
+```
+
+Notes:
+- The scheduler runs in the FastAPI process — no separate worker.
+- For watches with **uploaded** images (not URL-based), set `PUBLIC_BASE_URL` so providers can fetch the image at `<base>/uploads/<name>`.
+- State lives in SQLite at `DB_PATH` (default `./selfwatch.db`). Watches and previously-seen match URLs persist across restarts.
+
 ## API
 
 - `GET /api/providers` — list providers and whether each is enabled.
+- `GET /api/watches` — list watches.
+- `POST /api/watches` — create a watch (multipart form: `name`, `cadence_minutes`, `webhook_url`, `image_url` and/or `file`).
+- `GET /api/watches/{id}` — fetch a single watch.
+- `DELETE /api/watches/{id}` — delete a watch (cascades to its seen-match history).
+- `POST /api/watches/{id}/run` — run a watch immediately; returns `WatchRunResult` with `new_matches`.
 - `POST /api/scan` — multipart form with `image_url` (string) and/or `file` (image). Returns:
   ```json
   {
@@ -87,6 +130,12 @@ src/selfwatch/
     base.py          # Provider interface
     google_lens.py   # SerpAPI Google Lens
     yandex.py        # SerpAPI Yandex Images
+    tineye.py        # TinEye Search API (HMAC-signed)
+  scanning.py        # Provider fan-out + dedupe (used by /api/scan and watches)
+  watches.py         # Watch CRUD, per-watch scan diff, run logic
+  scheduler.py       # In-process asyncio loop that runs due watches
+  notifier.py        # Webhook dispatch
+  db.py              # SQLite schema + connection helper
 static/index.html    # Upload UI
 ```
 
@@ -98,7 +147,7 @@ static/index.html    # Upload UI
 
 ## Roadmap
 
-- TinEye direct integration (HMAC auth, multipart upload — works without public URL)
 - Bing Visual Search
-- Recurring scans + email/webhook alerts on new matches
+- Email (SMTP) notification channel in addition to webhooks
 - Perceptual-hash pre-filter for near-duplicate detection on the user's own image library
+- End-to-end validation of TinEye against live credentials

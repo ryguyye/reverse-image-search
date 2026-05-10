@@ -1,10 +1,11 @@
 from .base import Provider, ProviderResult, RawMatch
 from .google_lens import GoogleLensProvider
+from .tineye import TinEyeProvider
 from .yandex import YandexProvider
 
 
 def all_providers() -> list[Provider]:
-    return [GoogleLensProvider(), YandexProvider()]
+    return [GoogleLensProvider(), YandexProvider(), TinEyeProvider()]
 
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "ProviderResult",
     "RawMatch",
     "GoogleLensProvider",
+    "TinEyeProvider",
     "YandexProvider",
     "all_providers",
 ]
