@@ -225,20 +225,40 @@
               <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;">
                 <div>
                   <strong>${w.name}</strong>
+                  <span class="pill" style="${w.active ? "" : "background:var(--error);color:#fff;border-color:var(--error);"}">${w.active ? "active" : "paused"}</span>
                   <div class="meta">every ${w.cadence_minutes} min · last run ${w.last_run_at || "never"}</div>
                   <div class="meta">${w.image_url ? w.image_url : `upload: ${w.image_filename}`}</div>
                   ${w.webhook_url ? `<div class="meta">webhook: ${w.webhook_url}</div>` : ""}
                 </div>
-                <div style="display:flex;gap:.5rem;">
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
                   <button data-act="run" data-id="${w.id}">Run now</button>
+                  <button data-act="toggle" data-id="${w.id}">${w.active ? "Pause" : "Resume"}</button>
+                  <button data-act="history" data-id="${w.id}">Matches</button>
                   <button data-act="del" data-id="${w.id}" style="background:var(--error);">Delete</button>
                 </div>
               </div>
+              <div class="watch-history" data-history-for="${w.id}"></div>
             </div>
           `).join("");
         } catch (e) {
           wrap.innerHTML = `<div class="card error">Failed to load watches: ${e}</div>`;
         }
+      }
+
+      function renderHistory(matches) {
+        if (!matches.length) {
+          return `<div class="empty" style="padding:.6rem 0;">No matches recorded yet.</div>`;
+        }
+        return matches.map(m => `
+          <div class="match">
+            <div>${m.thumbnail_url ? `<img src="${m.thumbnail_url}" alt="" loading="lazy" />` : `<div class="empty" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;">—</div>`}</div>
+            <div>
+              <div><a href="${m.canonical_url}" target="_blank" rel="noopener noreferrer">${m.title || m.canonical_url}</a></div>
+              <div class="meta">${m.domain || ""} · first seen ${m.first_seen_at}</div>
+              <div>${m.sources.map(s => `<span class="pill">${s}</span>`).join("")}</div>
+            </div>
+          </div>
+        `).join("");
       }
 
       $("#watches-list").addEventListener("click", async (ev) => {
@@ -251,12 +271,34 @@
           if (act === "del") {
             if (!confirm("Delete this watch?")) return;
             await fetch(`/api/watches/${id}`, { method: "DELETE" });
+            await loadWatches();
           } else if (act === "run") {
             const r = await fetch(`/api/watches/${id}/run`, { method: "POST" });
             const data = await r.json();
             alert(`Found ${data.new_matches.length} new match(es). Webhook: ${data.webhook_status || "n/a"}`);
+            await loadWatches();
+          } else if (act === "toggle") {
+            const card = btn.closest(".card");
+            const isPaused = btn.textContent.trim() === "Resume";
+            await fetch(`/api/watches/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ active: isPaused }),
+            });
+            await loadWatches();
+          } else if (act === "history") {
+            const wrap = document.querySelector(`[data-history-for="${id}"]`);
+            if (wrap.dataset.loaded === "1") {
+              wrap.innerHTML = "";
+              wrap.dataset.loaded = "";
+              return;
+            }
+            wrap.innerHTML = `<div class="empty" style="padding:.6rem 0;">Loading…</div>`;
+            const r = await fetch(`/api/watches/${id}/matches`);
+            const matches = await r.json();
+            wrap.innerHTML = renderHistory(matches);
+            wrap.dataset.loaded = "1";
           }
-          await loadWatches();
         } finally {
           btn.disabled = false;
         }

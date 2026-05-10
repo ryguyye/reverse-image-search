@@ -92,12 +92,15 @@ Notes:
 
 ## API
 
+- `GET /healthz` — liveness check; reports DB connectivity.
 - `GET /api/providers` — list providers and whether each is enabled.
 - `GET /api/watches` — list watches.
 - `POST /api/watches` — create a watch (multipart form: `name`, `cadence_minutes`, `webhook_url`, `image_url` and/or `file`).
 - `GET /api/watches/{id}` — fetch a single watch.
+- `PATCH /api/watches/{id}` — update a watch. Body: `{"active": true|false}` to pause/resume.
 - `DELETE /api/watches/{id}` — delete a watch (cascades to its seen-match history).
 - `POST /api/watches/{id}/run` — run a watch immediately; returns `WatchRunResult` with `new_matches`.
+- `GET /api/watches/{id}/matches?limit=50&offset=0` — full history of matches recorded for a watch (URLs accumulated across all runs), newest first.
 - `POST /api/scan` — multipart form with `image_url` (string) and/or `file` (image). Returns:
   ```json
   {

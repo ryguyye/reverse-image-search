@@ -50,3 +50,16 @@ class WatchRunResult(BaseModel):
     providers_failed: list[dict]
     new_matches: list[Match]
     webhook_status: str | None = None
+
+
+class WatchUpdate(BaseModel):
+    active: bool | None = None
+
+
+class SeenMatch(BaseModel):
+    canonical_url: str
+    domain: str | None = None
+    title: str | None = None
+    thumbnail_url: str | None = None
+    sources: list[str] = Field(default_factory=list)
+    first_seen_at: str

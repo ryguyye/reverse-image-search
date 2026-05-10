@@ -84,6 +84,50 @@ def test_record_matches_handles_empty(temp_db):
     assert watches.record_matches(w.id, []) == []
 
 
+def test_set_active_toggles_and_excludes_from_due(temp_db):
+    w = watches.create(name="a", cadence_minutes=10, webhook_url=None, image_url="https://a.com/i")
+    paused = watches.set_active(w.id, False)
+    assert paused is not None and paused.active is False
+    assert all(x.id != w.id for x in watches.due(datetime.now(UTC)))
+    resumed = watches.set_active(w.id, True)
+    assert resumed.active is True
+    assert any(x.id == w.id for x in watches.due(datetime.now(UTC)))
+
+
+def test_set_active_returns_none_for_missing(temp_db):
+    assert watches.set_active(999, False) is None
+
+
+def test_list_matches_returns_history_with_timestamps(temp_db):
+    w = watches.create(name="a", cadence_minutes=10, webhook_url=None, image_url="https://a.com/i")
+    watches.record_matches(
+        w.id,
+        [
+            Match(url="https://x.com/1", domain="x.com", title="t1", sources=["g"]),
+            Match(url="https://x.com/2", domain="x.com", title="t2", sources=["g", "y"]),
+        ],
+    )
+    history = watches.list_matches(w.id)
+    assert len(history) == 2
+    assert {m.canonical_url for m in history} == {"https://x.com/1", "https://x.com/2"}
+    assert all(m.first_seen_at for m in history)
+    multi = next(m for m in history if m.canonical_url == "https://x.com/2")
+    assert sorted(multi.sources) == ["g", "y"]
+
+
+def test_list_matches_pagination(temp_db):
+    w = watches.create(name="a", cadence_minutes=10, webhook_url=None, image_url="https://a.com/i")
+    watches.record_matches(
+        w.id,
+        [Match(url=f"https://x.com/{i}", domain="x.com", sources=["g"]) for i in range(5)],
+    )
+    page1 = watches.list_matches(w.id, limit=2, offset=0)
+    page2 = watches.list_matches(w.id, limit=2, offset=2)
+    assert len(page1) == 2
+    assert len(page2) == 2
+    assert {m.canonical_url for m in page1} & {m.canonical_url for m in page2} == set()
+
+
 def test_resolve_image_url_uses_public_base(temp_db, monkeypatch):
     from selfwatch.config import settings
 
