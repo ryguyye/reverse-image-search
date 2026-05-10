@@ -13,6 +13,15 @@ class Settings(BaseSettings):
     webhook_timeout: int = 10
     min_cadence_minutes: int = 5
 
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_use_ssl: bool = False
+    smtp_starttls: bool = True
+    smtp_timeout: int = 20
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

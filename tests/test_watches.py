@@ -25,6 +25,36 @@ def test_create_requires_image(temp_db):
         watches.create(name="x", cadence_minutes=10, webhook_url=None)
 
 
+def test_create_with_email_requires_smtp(temp_db, monkeypatch):
+    from selfwatch.config import settings
+
+    monkeypatch.setattr(settings, "smtp_host", None)
+    monkeypatch.setattr(settings, "smtp_from", None)
+    with pytest.raises(ValueError, match="SMTP"):
+        watches.create(
+            name="x",
+            cadence_minutes=10,
+            webhook_url=None,
+            notify_email="me@example.com",
+            image_url="https://e.com/x",
+        )
+
+
+def test_create_with_email_succeeds_when_smtp_configured(temp_db, monkeypatch):
+    from selfwatch.config import settings
+
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(settings, "smtp_from", "noreply@example.com")
+    w = watches.create(
+        name="x",
+        cadence_minutes=10,
+        webhook_url=None,
+        notify_email="me@example.com",
+        image_url="https://e.com/x",
+    )
+    assert w.notify_email == "me@example.com"
+
+
 def test_create_enforces_min_cadence(temp_db):
     with pytest.raises(ValueError, match="cadence_minutes"):
         watches.create(

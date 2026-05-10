@@ -146,6 +146,7 @@ async def create_watch(
     name: str = Form(...),
     cadence_minutes: int = Form(...),
     webhook_url: str | None = Form(default=None),
+    notify_email: str | None = Form(default=None),
     image_url: str | None = Form(default=None),
     file: UploadFile | None = None,
 ) -> Watch:
@@ -162,6 +163,7 @@ async def create_watch(
             name=name,
             cadence_minutes=cadence_minutes,
             webhook_url=webhook_url,
+            notify_email=notify_email,
             image_url=image_url,
             image_filename=image_filename,
         )

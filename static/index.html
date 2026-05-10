@@ -118,6 +118,11 @@
             <input id="watch-webhook" name="webhook_url" type="url" placeholder="https://hooks.slack.com/..." />
           </div>
           <div>
+            <label for="watch-email">Notify email (optional)</label>
+            <input id="watch-email" name="notify_email" type="email" placeholder="me@example.com" />
+            <p class="providers">Requires SMTP env vars (<code>SMTP_HOST</code>, <code>SMTP_FROM</code>, …) in <code>.env</code>.</p>
+          </div>
+          <div>
             <label for="watch-image-url">Image URL</label>
             <input id="watch-image-url" name="image_url" type="url" placeholder="https://example.com/me.jpg" />
           </div>
@@ -229,6 +234,7 @@
                   <div class="meta">every ${w.cadence_minutes} min · last run ${w.last_run_at || "never"}</div>
                   <div class="meta">${w.image_url ? w.image_url : `upload: ${w.image_filename}`}</div>
                   ${w.webhook_url ? `<div class="meta">webhook: ${w.webhook_url}</div>` : ""}
+                  ${w.notify_email ? `<div class="meta">email: ${w.notify_email}</div>` : ""}
                 </div>
                 <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
                   <button data-act="run" data-id="${w.id}">Run now</button>
@@ -314,6 +320,8 @@
           fd.append("cadence_minutes", $("#watch-cadence").value);
           const wh = $("#watch-webhook").value.trim();
           if (wh) fd.append("webhook_url", wh);
+          const email = $("#watch-email").value.trim();
+          if (email) fd.append("notify_email", email);
           const url = $("#watch-image-url").value.trim();
           if (url) fd.append("image_url", url);
           const file = $("#watch-file").files[0];

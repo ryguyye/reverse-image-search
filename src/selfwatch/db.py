@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS watches (
     image_filename TEXT,
     cadence_minutes INTEGER NOT NULL,
     webhook_url TEXT,
+    notify_email TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_run_at TEXT,
@@ -33,10 +34,21 @@ CREATE TABLE IF NOT EXISTS seen_matches (
 """
 
 
+# Idempotent migrations for databases created before a column existed.
+_MIGRATIONS = {
+    "watches": [("notify_email", "TEXT")],
+}
+
+
 def init() -> None:
     Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.executescript(SCHEMA)
+        for table, columns in _MIGRATIONS.items():
+            existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for col_name, col_type in columns:
+                if col_name not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
 
 
 @contextmanager

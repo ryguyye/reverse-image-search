@@ -6,7 +6,7 @@ from urllib.parse import urlparse, urlunparse
 from . import db
 from .config import settings
 from .models import Match, SeenMatch, Watch, WatchRunResult
-from .notifier import send_webhook
+from .notifier import send_email, send_webhook, smtp_configured
 from .scanning import run_scan
 
 log = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ def _row_to_watch(row) -> Watch:
         image_filename=row["image_filename"],
         cadence_minutes=row["cadence_minutes"],
         webhook_url=row["webhook_url"],
+        notify_email=row["notify_email"],
         active=bool(row["active"]),
         created_at=row["created_at"],
         last_run_at=row["last_run_at"],
@@ -31,6 +32,7 @@ def create(
     name: str,
     cadence_minutes: int,
     webhook_url: str | None,
+    notify_email: str | None = None,
     image_url: str | None = None,
     image_filename: str | None = None,
 ) -> Watch:
@@ -38,11 +40,14 @@ def create(
         raise ValueError("Provide image_url or image_filename")
     if cadence_minutes < settings.min_cadence_minutes:
         raise ValueError(f"cadence_minutes must be >= {settings.min_cadence_minutes}")
+    if notify_email and not smtp_configured():
+        raise ValueError("SMTP is not configured (set SMTP_HOST and SMTP_FROM)")
     with db.connect() as conn:
         cur = conn.execute(
-            """INSERT INTO watches (name, image_url, image_filename, cadence_minutes, webhook_url)
-               VALUES (?, ?, ?, ?, ?)""",
-            (name, image_url, image_filename, cadence_minutes, webhook_url),
+            """INSERT INTO watches
+               (name, image_url, image_filename, cadence_minutes, webhook_url, notify_email)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, image_url, image_filename, cadence_minutes, webhook_url, notify_email),
         )
         watch_id = cur.lastrowid
         row = conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()
@@ -192,17 +197,26 @@ async def run(watch: Watch) -> WatchRunResult:
     _mark_run(watch.id, ran_at)
 
     webhook_status: str | None = None
-    if new and watch.webhook_url:
-        webhook_status = await send_webhook(
-            watch.webhook_url,
-            {
-                "watch_id": watch.id,
-                "watch_name": watch.name,
-                "scanned_at": ran_at.isoformat(timespec="seconds"),
-                "image_url": image_url,
-                "new_matches": [m.model_dump() for m in new],
-            },
-        )
+    email_status: str | None = None
+    if new:
+        scanned_at = ran_at.isoformat(timespec="seconds")
+        if watch.webhook_url:
+            webhook_status = await send_webhook(
+                watch.webhook_url,
+                {
+                    "watch_id": watch.id,
+                    "watch_name": watch.name,
+                    "scanned_at": scanned_at,
+                    "image_url": image_url,
+                    "new_matches": [m.model_dump() for m in new],
+                },
+            )
+        if watch.notify_email:
+            email_status = await send_email(
+                to=watch.notify_email,
+                subject=_format_email_subject(watch.name, len(new)),
+                body=_format_email_body(watch, image_url, scanned_at, new),
+            )
 
     return WatchRunResult(
         watch_id=watch.id,
@@ -211,4 +225,31 @@ async def run(watch: Watch) -> WatchRunResult:
         providers_failed=scan.providers_failed,
         new_matches=new,
         webhook_status=webhook_status,
+        email_status=email_status,
     )
+
+
+def _format_email_subject(watch_name: str, n: int) -> str:
+    plural = "match" if n == 1 else "matches"
+    return f"selfwatch: {n} new {plural} for “{watch_name}”"
+
+
+def _format_email_body(watch: Watch, image_url: str, scanned_at: str, matches: list[Match]) -> str:
+    lines = [
+        f"selfwatch found {len(matches)} new match(es) for watch “{watch.name}”.",
+        "",
+        f"Image:    {image_url}",
+        f"Scanned:  {scanned_at}",
+        "",
+        "New matches:",
+    ]
+    for m in matches:
+        sources = ", ".join(m.sources) if m.sources else ""
+        lines.append(f"  - {m.url}")
+        meta = " · ".join(s for s in [m.domain, sources] if s)
+        if meta:
+            lines.append(f"      {meta}")
+    lines.append("")
+    lines.append("--")
+    lines.append("Sent by selfwatch")
+    return "\n".join(lines)

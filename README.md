@@ -54,14 +54,20 @@ If a tunnel doesn't fit your setup, host the image somewhere stable (your own si
 
 ## Recurring scans (watches)
 
-You can save an image as a **watch** and have selfwatch re-scan it on a schedule. When new matches appear (URLs not seen on previous runs of that watch), it can POST a JSON payload to a webhook of your choice (Slack incoming webhook, Discord, Zapier, your own endpoint).
+You can save an image as a **watch** and have selfwatch re-scan it on a schedule. When new matches appear (URLs not seen on previous runs of that watch), it can notify you via:
+
+- **Webhook** — POST a JSON payload to a URL (Slack, Discord, Zapier, your own endpoint).
+- **Email** — plaintext message to one address. Requires `SMTP_*` env vars.
+
+A single watch can use either, both, or neither — they're independent.
 
 ```bash
-# Create a watch from a hosted image, run hourly, post new matches to Slack
+# Create a watch from a hosted image, run hourly, post to Slack and email me
 curl -X POST http://localhost:8000/api/watches \
   -F "name=my profile pic" \
   -F "cadence_minutes=60" \
   -F "webhook_url=https://hooks.slack.com/services/..." \
+  -F "notify_email=me@example.com" \
   -F "image_url=https://me.example/photo.jpg"
 ```
 
@@ -95,7 +101,7 @@ Notes:
 - `GET /healthz` — liveness check; reports DB connectivity.
 - `GET /api/providers` — list providers and whether each is enabled.
 - `GET /api/watches` — list watches.
-- `POST /api/watches` — create a watch (multipart form: `name`, `cadence_minutes`, `webhook_url`, `image_url` and/or `file`).
+- `POST /api/watches` — create a watch (multipart form: `name`, `cadence_minutes`, `webhook_url`, `notify_email`, `image_url` and/or `file`).
 - `GET /api/watches/{id}` — fetch a single watch.
 - `PATCH /api/watches/{id}` — update a watch. Body: `{"active": true|false}` to pause/resume.
 - `DELETE /api/watches/{id}` — delete a watch (cascades to its seen-match history).
@@ -149,6 +155,5 @@ static/index.html    # Upload UI
 ## Roadmap
 
 - Bing Visual Search
-- Email (SMTP) notification channel in addition to webhooks
 - Perceptual-hash pre-filter for near-duplicate detection on the user's own image library
 - End-to-end validation of TinEye against live credentials

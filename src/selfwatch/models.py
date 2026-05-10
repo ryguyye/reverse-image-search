@@ -31,6 +31,7 @@ class Watch(BaseModel):
     image_filename: str | None = None
     cadence_minutes: int
     webhook_url: str | None = None
+    notify_email: str | None = None
     active: bool
     created_at: str
     last_run_at: str | None = None
@@ -40,6 +41,7 @@ class WatchCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     cadence_minutes: int = Field(..., ge=5)
     webhook_url: str | None = None
+    notify_email: str | None = None
     image_url: str | None = None
 
 
@@ -50,6 +52,7 @@ class WatchRunResult(BaseModel):
     providers_failed: list[dict]
     new_matches: list[Match]
     webhook_status: str | None = None
+    email_status: str | None = None
 
 
 class WatchUpdate(BaseModel):
