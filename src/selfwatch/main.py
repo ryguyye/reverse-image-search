@@ -1,17 +1,21 @@
 import asyncio
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import settings
-from .dedupe import merge
-from .models import ProviderInfo, ScanResponse
+from . import db, scheduler, watches
+from .models import (
+    ProviderInfo,
+    ScanResponse,
+    Watch,
+    WatchRunResult,
+)
 from .providers import all_providers
-from .providers.base import ProviderResult
+from .scanning import run_scan
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "static"
@@ -21,7 +25,26 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
-app = FastAPI(title="selfwatch", description="Self-monitoring reverse image search")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init()
+    task = asyncio.create_task(scheduler.loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(
+    title="selfwatch",
+    description="Self-monitoring reverse image search",
+    lifespan=lifespan,
+)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -56,6 +79,15 @@ def _public_url(request: Request, upload_name: str) -> str:
     return str(request.url_for("uploads", path=upload_name))
 
 
+async def _read_upload(file: UploadFile) -> bytes:
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported content type: {file.content_type}")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    return data
+
+
 @app.post("/api/scan", response_model=ScanResponse)
 async def scan(
     request: Request,
@@ -70,35 +102,77 @@ async def scan(
     resolved_url = image_url
 
     if file is not None and file.filename:
-        if file.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(status_code=400, detail=f"Unsupported content type: {file.content_type}")
-        image_bytes = await file.read()
-        if len(image_bytes) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+        image_bytes = await _read_upload(file)
         image_filename = file.filename
         upload_name = _save_upload(file, image_bytes)
         if not resolved_url:
             resolved_url = _public_url(request, upload_name)
 
-    providers_list = [p for p in all_providers() if p.is_enabled()]
-    if not providers_list:
+    result = await run_scan(
+        image_url=resolved_url,
+        image_bytes=image_bytes,
+        image_filename=image_filename,
+    )
+    if not result.providers_used and any(
+        f.get("name") == "config" for f in result.providers_failed
+    ):
         raise HTTPException(
             status_code=503,
             detail="No providers enabled. Set SERPAPI_KEY in .env to enable Google Lens / Yandex.",
         )
+    return result
 
-    async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
-        tasks = [
-            p.search(
-                client,
-                image_url=resolved_url,
-                image_bytes=image_bytes,
-                image_filename=image_filename,
-            )
-            for p in providers_list
-        ]
-        results: list[ProviderResult] = await asyncio.gather(*tasks)
 
-    used = [r.name for r in results if not r.error]
-    failed = [{"name": r.name, "error": r.error} for r in results if r.error]
-    return ScanResponse(providers_used=used, providers_failed=failed, matches=merge(results))
+@app.get("/api/watches", response_model=list[Watch])
+async def list_watches() -> list[Watch]:
+    return watches.list_all()
+
+
+@app.post("/api/watches", response_model=Watch, status_code=201)
+async def create_watch(
+    name: str = Form(...),
+    cadence_minutes: int = Form(...),
+    webhook_url: str | None = Form(default=None),
+    image_url: str | None = Form(default=None),
+    file: UploadFile | None = None,
+) -> Watch:
+    if not image_url and not (file and file.filename):
+        raise HTTPException(status_code=400, detail="Provide image_url or file.")
+
+    image_filename: str | None = None
+    if file is not None and file.filename:
+        data = await _read_upload(file)
+        image_filename = _save_upload(file, data)
+
+    try:
+        return watches.create(
+            name=name,
+            cadence_minutes=cadence_minutes,
+            webhook_url=webhook_url,
+            image_url=image_url,
+            image_filename=image_filename,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/watches/{watch_id}", response_model=Watch)
+async def get_watch(watch_id: int) -> Watch:
+    watch = watches.get(watch_id)
+    if not watch:
+        raise HTTPException(status_code=404, detail="Watch not found.")
+    return watch
+
+
+@app.delete("/api/watches/{watch_id}", status_code=204)
+async def delete_watch(watch_id: int) -> None:
+    if not watches.delete(watch_id):
+        raise HTTPException(status_code=404, detail="Watch not found.")
+
+
+@app.post("/api/watches/{watch_id}/run", response_model=WatchRunResult)
+async def run_watch_now(watch_id: int) -> WatchRunResult:
+    watch = watches.get(watch_id)
+    if not watch:
+        raise HTTPException(status_code=404, detail="Watch not found.")
+    return await watches.run(watch)

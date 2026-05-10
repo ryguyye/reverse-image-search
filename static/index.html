@@ -99,6 +99,40 @@
 
       <div id="status"></div>
       <div id="results"></div>
+
+      <h2 style="margin-top:2rem;font-size:1.2rem;">Watches</h2>
+      <p class="lede">Save an image to be re-scanned periodically. When new matches appear, optionally POST them to a webhook (Slack, Discord, Zapier, your own endpoint).</p>
+
+      <form id="watch-form" class="card">
+        <div class="row">
+          <div>
+            <label for="watch-name">Name</label>
+            <input id="watch-name" name="name" type="text" placeholder="my profile pic" required />
+          </div>
+          <div>
+            <label for="watch-cadence">Cadence (minutes)</label>
+            <input id="watch-cadence" name="cadence_minutes" type="number" min="5" value="60" required />
+          </div>
+          <div>
+            <label for="watch-webhook">Webhook URL (optional)</label>
+            <input id="watch-webhook" name="webhook_url" type="url" placeholder="https://hooks.slack.com/..." />
+          </div>
+          <div>
+            <label for="watch-image-url">Image URL</label>
+            <input id="watch-image-url" name="image_url" type="url" placeholder="https://example.com/me.jpg" />
+          </div>
+          <div>
+            <label for="watch-file">…or upload</label>
+            <input id="watch-file" name="file" type="file" accept="image/*" />
+            <p class="providers">Uploads require <code>PUBLIC_BASE_URL</code> in <code>.env</code> for the scheduler to fetch them.</p>
+          </div>
+          <div>
+            <button id="watch-submit" type="submit">Create watch</button>
+          </div>
+        </div>
+      </form>
+
+      <div id="watches-list"></div>
     </main>
 
     <script>
@@ -177,7 +211,86 @@
         }
       });
 
+      async function loadWatches() {
+        const wrap = $("#watches-list");
+        try {
+          const r = await fetch("/api/watches");
+          const data = await r.json();
+          if (!data.length) {
+            wrap.innerHTML = `<div class="card empty">No watches yet.</div>`;
+            return;
+          }
+          wrap.innerHTML = data.map(w => `
+            <div class="card" data-id="${w.id}">
+              <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;">
+                <div>
+                  <strong>${w.name}</strong>
+                  <div class="meta">every ${w.cadence_minutes} min · last run ${w.last_run_at || "never"}</div>
+                  <div class="meta">${w.image_url ? w.image_url : `upload: ${w.image_filename}`}</div>
+                  ${w.webhook_url ? `<div class="meta">webhook: ${w.webhook_url}</div>` : ""}
+                </div>
+                <div style="display:flex;gap:.5rem;">
+                  <button data-act="run" data-id="${w.id}">Run now</button>
+                  <button data-act="del" data-id="${w.id}" style="background:var(--error);">Delete</button>
+                </div>
+              </div>
+            </div>
+          `).join("");
+        } catch (e) {
+          wrap.innerHTML = `<div class="card error">Failed to load watches: ${e}</div>`;
+        }
+      }
+
+      $("#watches-list").addEventListener("click", async (ev) => {
+        const btn = ev.target.closest("button[data-act]");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        const act = btn.dataset.act;
+        btn.disabled = true;
+        try {
+          if (act === "del") {
+            if (!confirm("Delete this watch?")) return;
+            await fetch(`/api/watches/${id}`, { method: "DELETE" });
+          } else if (act === "run") {
+            const r = await fetch(`/api/watches/${id}/run`, { method: "POST" });
+            const data = await r.json();
+            alert(`Found ${data.new_matches.length} new match(es). Webhook: ${data.webhook_status || "n/a"}`);
+          }
+          await loadWatches();
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      $("#watch-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = $("#watch-submit");
+        btn.disabled = true;
+        try {
+          const fd = new FormData();
+          fd.append("name", $("#watch-name").value.trim());
+          fd.append("cadence_minutes", $("#watch-cadence").value);
+          const wh = $("#watch-webhook").value.trim();
+          if (wh) fd.append("webhook_url", wh);
+          const url = $("#watch-image-url").value.trim();
+          if (url) fd.append("image_url", url);
+          const file = $("#watch-file").files[0];
+          if (file) fd.append("file", file);
+          const resp = await fetch("/api/watches", { method: "POST", body: fd });
+          if (!resp.ok) {
+            const data = await resp.json();
+            alert(data.detail || "Create failed");
+            return;
+          }
+          ev.target.reset();
+          await loadWatches();
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
       loadProviders();
+      loadWatches();
     </script>
   </body>
 </html>
