@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     serpapi_key: str | None = None
     tineye_api_key: str | None = None
+    tineye_private_key: str | None = None
     max_results_per_provider: int = 25
     http_timeout: int = 30
 

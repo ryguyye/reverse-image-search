@@ -21,7 +21,7 @@ This tool is intentionally scoped to monitoring images you own or have rights to
 | --- | --- | --- | --- |
 | Google Lens | SerpAPI (`engine=google_lens`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
 | Yandex Images | SerpAPI (`engine=yandex_images`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
-| TinEye | Direct API | Upload or URL | Roadmap (HMAC-signed direct integration) |
+| TinEye | Direct API (HMAC-signed) | Upload or URL | Enabled when `TINEYE_API_KEY` and `TINEYE_PRIVATE_KEY` are set. **Experimental** — signing follows TinEye's documented spec but has not been validated against live credentials. |
 | Bing Visual Search | Microsoft API | Upload or URL | Roadmap |
 
 Only providers with credentials configured will run. If none are configured, the API returns 503.
@@ -87,6 +87,7 @@ src/selfwatch/
     base.py          # Provider interface
     google_lens.py   # SerpAPI Google Lens
     yandex.py        # SerpAPI Yandex Images
+    tineye.py        # TinEye Search API (HMAC-signed)
 static/index.html    # Upload UI
 ```
 
@@ -98,7 +99,7 @@ static/index.html    # Upload UI
 
 ## Roadmap
 
-- TinEye direct integration (HMAC auth, multipart upload — works without public URL)
 - Bing Visual Search
 - Recurring scans + email/webhook alerts on new matches
 - Perceptual-hash pre-filter for near-duplicate detection on the user's own image library
+- End-to-end validation of TinEye against live credentials
