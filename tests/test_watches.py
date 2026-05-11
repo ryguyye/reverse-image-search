@@ -158,6 +158,101 @@ def test_list_matches_pagination(temp_db):
     assert {m.canonical_url for m in page1} & {m.canonical_url for m in page2} == set()
 
 
+def test_find_near_duplicate_returns_match_within_threshold(temp_db):
+    w = watches.create(
+        name="a",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://a.com/i",
+        image_phash="ffffffffffffffff",
+    )
+    # Identical hash → distance 0 → returns a match
+    dup = watches.find_near_duplicate("ffffffffffffffff")
+    assert dup is not None
+    found, dist = dup
+    assert found.id == w.id
+    assert dist == 0
+
+
+def test_find_near_duplicate_excludes_self(temp_db):
+    w = watches.create(
+        name="a",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://a.com/i",
+        image_phash="ffffffffffffffff",
+    )
+    assert watches.find_near_duplicate("ffffffffffffffff", exclude_id=w.id) is None
+
+
+def test_find_near_duplicate_returns_none_when_far(temp_db):
+    watches.create(
+        name="a",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://a.com/i",
+        image_phash="ffffffffffffffff",
+    )
+    # 0x0000000000000000 differs from 0xffffffffffffffff in 64 bits.
+    assert watches.find_near_duplicate("0000000000000000") is None
+
+
+def test_find_near_duplicate_skips_watches_without_phash(temp_db):
+    watches.create(name="a", cadence_minutes=10, webhook_url=None, image_url="https://a.com/i")
+    assert watches.find_near_duplicate("ffffffffffffffff") is None
+
+
+def test_create_rejects_near_duplicate_without_force(temp_db):
+    watches.create(
+        name="first",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://a.com/i",
+        image_phash="ffffffffffffffff",
+    )
+    with pytest.raises(watches.DuplicateWatchError) as excinfo:
+        watches.create(
+            name="second",
+            cadence_minutes=10,
+            webhook_url=None,
+            image_url="https://b.com/i",
+            image_phash="ffffffffffffffff",
+        )
+    assert excinfo.value.existing.name == "first"
+    assert excinfo.value.distance == 0
+
+
+def test_create_with_force_bypasses_duplicate_check(temp_db):
+    watches.create(
+        name="first",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://a.com/i",
+        image_phash="ffffffffffffffff",
+    )
+    w2 = watches.create(
+        name="second",
+        cadence_minutes=10,
+        webhook_url=None,
+        image_url="https://b.com/i",
+        image_phash="ffffffffffffffff",
+        force=True,
+    )
+    assert w2.id != 1
+    assert w2.image_phash == "ffffffffffffffff"
+
+
+def test_create_without_phash_skips_dedup(temp_db):
+    """Watches whose images couldn't be hashed (e.g. unreachable URL) still get created."""
+    w1 = watches.create(
+        name="a", cadence_minutes=10, webhook_url=None, image_url="https://a.com/i"
+    )
+    w2 = watches.create(
+        name="b", cadence_minutes=10, webhook_url=None, image_url="https://b.com/i"
+    )
+    assert w1.id != w2.id
+
+
 def test_resolve_image_url_uses_public_base(temp_db, monkeypatch):
     from selfwatch.config import settings
 

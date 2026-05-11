@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import db, scheduler, watches
 from .config import settings
+from .image_utils import compute_phash, fetch_image_bytes
 from .models import (
     ProviderInfo,
     ScanResponse,
@@ -150,15 +151,21 @@ async def create_watch(
     webhook_url: str | None = Form(default=None),
     notify_email: str | None = Form(default=None),
     image_url: str | None = Form(default=None),
+    force: bool = Form(default=False),
     file: UploadFile | None = None,
 ) -> Watch:
     if not image_url and not (file and file.filename):
         raise HTTPException(status_code=400, detail="Provide image_url or file.")
 
     image_filename: str | None = None
+    image_bytes: bytes | None = None
     if file is not None and file.filename:
-        data = await _read_upload(file)
-        image_filename = _save_upload(file, data)
+        image_bytes = await _read_upload(file)
+        image_filename = _save_upload(file, image_bytes)
+    elif image_url:
+        image_bytes = await fetch_image_bytes(image_url)
+
+    image_phash = compute_phash(image_bytes) if image_bytes else None
 
     try:
         return watches.create(
@@ -168,7 +175,20 @@ async def create_watch(
             notify_email=notify_email,
             image_url=image_url,
             image_filename=image_filename,
+            image_phash=image_phash,
+            force=force,
         )
+    except watches.DuplicateWatchError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "existing_watch_id": exc.existing.id,
+                "existing_watch_name": exc.existing.name,
+                "distance": exc.distance,
+                "hint": "Add force=true to the form to create anyway.",
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

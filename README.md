@@ -106,6 +106,7 @@ Notes:
 - The scheduler runs in the FastAPI process — no separate worker.
 - For watches with **uploaded** images (not URL-based), set `PUBLIC_BASE_URL` so providers can fetch the image at `<base>/uploads/<name>`.
 - State lives in SQLite at `DB_PATH` (default `./selfwatch.db`). Watches and previously-seen match URLs persist across restarts.
+- New watches are perceptual-hashed (pHash) and rejected with **409** if they're a near-duplicate of an existing watch (Hamming distance ≤ 10). Resend the request with `force=true` to create anyway. If the image can't be fetched/decoded, the hash is omitted and dedup is silently skipped.
 
 ## API
 
@@ -153,7 +154,8 @@ src/selfwatch/
   scanning.py        # Provider fan-out + dedupe (used by /api/scan and watches)
   watches.py         # Watch CRUD, per-watch scan diff, run logic
   scheduler.py       # In-process asyncio loop that runs due watches
-  notifier.py        # Webhook dispatch
+  notifier.py        # Webhook + email dispatch
+  image_utils.py     # Perceptual-hash + image fetch helpers
   db.py              # SQLite schema + connection helper
 static/index.html    # Upload UI
 ```
@@ -166,5 +168,4 @@ static/index.html    # Upload UI
 
 ## Roadmap
 
-- Perceptual-hash pre-filter for near-duplicate detection on the user's own image library
 - End-to-end validation of TinEye against live credentials

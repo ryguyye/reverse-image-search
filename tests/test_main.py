@@ -74,3 +74,59 @@ def test_get_watch_matches_404(temp_db):
     with TestClient(app) as client:
         resp = client.get("/api/watches/9999/matches")
     assert resp.status_code == 404
+
+
+def test_upload_duplicate_returns_409(temp_db, image_bytes_red):
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/watches",
+            data={"name": "first", "cadence_minutes": "10"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+        assert first.status_code == 201
+
+        second = client.post(
+            "/api/watches",
+            data={"name": "second", "cadence_minutes": "10"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+    assert second.status_code == 409
+    detail = second.json()["detail"]
+    assert detail["existing_watch_name"] == "first"
+    assert detail["distance"] == 0
+    assert "force=true" in detail["hint"]
+
+
+def test_upload_duplicate_with_force_succeeds(temp_db, image_bytes_red):
+    with TestClient(app) as client:
+        client.post(
+            "/api/watches",
+            data={"name": "first", "cadence_minutes": "10"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+        forced = client.post(
+            "/api/watches",
+            data={"name": "second", "cadence_minutes": "10", "force": "true"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+    assert forced.status_code == 201
+    assert forced.json()["name"] == "second"
+
+
+def test_distinct_uploads_both_succeed(temp_db, image_bytes_red, image_bytes_blue):
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/watches",
+            data={"name": "red", "cadence_minutes": "10"},
+            files={"file": ("red.png", image_bytes_red, "image/png")},
+        )
+        second = client.post(
+            "/api/watches",
+            data={"name": "blue", "cadence_minutes": "10"},
+            files={"file": ("blue.png", image_bytes_blue, "image/png")},
+        )
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["image_phash"] is not None
+    assert second.json()["image_phash"] is not None
+    assert first.json()["image_phash"] != second.json()["image_phash"]

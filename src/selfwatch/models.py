@@ -29,6 +29,7 @@ class Watch(BaseModel):
     name: str
     image_url: str | None = None
     image_filename: str | None = None
+    image_phash: str | None = None
     cadence_minutes: int
     webhook_url: str | None = None
     notify_email: str | None = None
