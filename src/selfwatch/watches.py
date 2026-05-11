@@ -5,11 +5,24 @@ from urllib.parse import urlparse, urlunparse
 
 from . import db
 from .config import settings
+from .image_utils import DUPLICATE_THRESHOLD, hamming_distance
 from .models import Match, SeenMatch, Watch, WatchRunResult
 from .notifier import send_email, send_webhook, smtp_configured
 from .scanning import run_scan
 
 log = logging.getLogger(__name__)
+
+
+class DuplicateWatchError(ValueError):
+    """Raised when a new watch's image is a near-duplicate of an existing watch."""
+
+    def __init__(self, existing: "Watch", distance: int):
+        self.existing = existing
+        self.distance = distance
+        super().__init__(
+            f"image is a near-duplicate of watch {existing.id} ('{existing.name}'), "
+            f"Hamming distance {distance}"
+        )
 
 
 def _row_to_watch(row) -> Watch:
@@ -18,6 +31,7 @@ def _row_to_watch(row) -> Watch:
         name=row["name"],
         image_url=row["image_url"],
         image_filename=row["image_filename"],
+        image_phash=row["image_phash"],
         cadence_minutes=row["cadence_minutes"],
         webhook_url=row["webhook_url"],
         notify_email=row["notify_email"],
@@ -25,6 +39,29 @@ def _row_to_watch(row) -> Watch:
         created_at=row["created_at"],
         last_run_at=row["last_run_at"],
     )
+
+
+def find_near_duplicate(
+    phash: str, threshold: int = DUPLICATE_THRESHOLD, exclude_id: int | None = None
+) -> tuple[Watch, int] | None:
+    """Return (watch, distance) for the closest existing watch within threshold, or None."""
+    if not phash:
+        return None
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM watches WHERE image_phash IS NOT NULL"
+        ).fetchall()
+    best: tuple[Watch, int] | None = None
+    for row in rows:
+        if exclude_id is not None and row["id"] == exclude_id:
+            continue
+        try:
+            dist = hamming_distance(phash, row["image_phash"])
+        except ValueError:
+            continue
+        if dist <= threshold and (best is None or dist < best[1]):
+            best = (_row_to_watch(row), dist)
+    return best
 
 
 def create(
@@ -35,6 +72,8 @@ def create(
     notify_email: str | None = None,
     image_url: str | None = None,
     image_filename: str | None = None,
+    image_phash: str | None = None,
+    force: bool = False,
 ) -> Watch:
     if not image_url and not image_filename:
         raise ValueError("Provide image_url or image_filename")
@@ -42,12 +81,25 @@ def create(
         raise ValueError(f"cadence_minutes must be >= {settings.min_cadence_minutes}")
     if notify_email and not smtp_configured():
         raise ValueError("SMTP is not configured (set SMTP_HOST and SMTP_FROM)")
+    if image_phash and not force:
+        dup = find_near_duplicate(image_phash)
+        if dup is not None:
+            raise DuplicateWatchError(dup[0], dup[1])
     with db.connect() as conn:
         cur = conn.execute(
             """INSERT INTO watches
-               (name, image_url, image_filename, cadence_minutes, webhook_url, notify_email)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, image_url, image_filename, cadence_minutes, webhook_url, notify_email),
+               (name, image_url, image_filename, image_phash,
+                cadence_minutes, webhook_url, notify_email)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                name,
+                image_url,
+                image_filename,
+                image_phash,
+                cadence_minutes,
+                webhook_url,
+                notify_email,
+            ),
         )
         watch_id = cur.lastrowid
         row = conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()

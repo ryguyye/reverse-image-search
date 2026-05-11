@@ -326,10 +326,21 @@
           if (url) fd.append("image_url", url);
           const file = $("#watch-file").files[0];
           if (file) fd.append("file", file);
-          const resp = await fetch("/api/watches", { method: "POST", body: fd });
+          let resp = await fetch("/api/watches", { method: "POST", body: fd });
+          if (resp.status === 409) {
+            const data = await resp.json();
+            const d = data.detail || {};
+            const confirmed = confirm(
+              `This image looks like a near-duplicate of watch ${d.existing_watch_id} ("${d.existing_watch_name}") ` +
+              `(Hamming distance ${d.distance}). Create it anyway?`
+            );
+            if (!confirmed) return;
+            fd.append("force", "true");
+            resp = await fetch("/api/watches", { method: "POST", body: fd });
+          }
           if (!resp.ok) {
             const data = await resp.json();
-            alert(data.detail || "Create failed");
+            alert(typeof data.detail === "string" ? data.detail : (data.detail?.message || "Create failed"));
             return;
           }
           ev.target.reset();

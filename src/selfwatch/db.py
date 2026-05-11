@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS watches (
     name TEXT NOT NULL,
     image_url TEXT,
     image_filename TEXT,
+    image_phash TEXT,
     cadence_minutes INTEGER NOT NULL,
     webhook_url TEXT,
     notify_email TEXT,
@@ -36,7 +37,10 @@ CREATE TABLE IF NOT EXISTS seen_matches (
 
 # Idempotent migrations for databases created before a column existed.
 _MIGRATIONS = {
-    "watches": [("notify_email", "TEXT")],
+    "watches": [
+        ("notify_email", "TEXT"),
+        ("image_phash", "TEXT"),
+    ],
 }
 
 
