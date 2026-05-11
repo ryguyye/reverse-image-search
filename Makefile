@@ -5,17 +5,18 @@ PORT ?= 8000
 APP_DIR := src
 APP := selfwatch.main:app
 
-.PHONY: help install dev run tunnel test lint clean
+.PHONY: help install dev run tunnel test lint clean tineye-ping
 
 help:
 	@echo "Targets:"
-	@echo "  make install   Create .venv and install deps"
-	@echo "  make dev       Run uvicorn with --reload on PORT=$(PORT)"
-	@echo "  make run       Run uvicorn for production (no reload, proxy headers)"
-	@echo "  make tunnel    Start a Cloudflare quick tunnel to localhost:$(PORT)"
-	@echo "  make test      Lint + tests"
-	@echo "  make lint      ruff check"
-	@echo "  make clean     Remove .venv, caches, uploads, db"
+	@echo "  make install      Create .venv and install deps"
+	@echo "  make dev          Run uvicorn with --reload on PORT=$(PORT)"
+	@echo "  make run          Run uvicorn for production (no reload, proxy headers)"
+	@echo "  make tunnel       Start a Cloudflare quick tunnel to localhost:$(PORT)"
+	@echo "  make tineye-ping  One-shot TinEye creds check; pass ARGS=\"--image-url <url>\" or ARGS=\"--file <path>\""
+	@echo "  make test         Lint + tests"
+	@echo "  make lint         ruff check"
+	@echo "  make clean        Remove .venv, caches, uploads, db"
 
 $(VENV):
 	$(PY) -m venv $(VENV)
@@ -45,6 +46,9 @@ test: lint
 
 lint:
 	$(BIN)/ruff check src tests
+
+tineye-ping:
+	PYTHONPATH=$(APP_DIR) $(BIN)/python -m selfwatch.tineye_ping $(ARGS)
 
 clean:
 	rm -rf $(VENV) .pytest_cache .ruff_cache uploads selfwatch.db selfwatch.db-journal
