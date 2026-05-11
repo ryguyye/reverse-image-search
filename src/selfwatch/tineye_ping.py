@@ -83,8 +83,12 @@ async def _ping_url(image_url: str, verbose: bool) -> int:
     print(f"GET {TINEYE_URL}")
     if verbose:
         print(json.dumps({k: ("***" if k == "api_key" else v) for k, v in params.items()}, indent=2))
-    async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
-        resp = await client.get(TINEYE_URL, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
+            resp = await client.get(TINEYE_URL, params=params)
+    except httpx.HTTPError as exc:
+        print(f"error: network failure: {exc}", file=sys.stderr)
+        return 1
     return _report(resp)
 
 
@@ -114,13 +118,17 @@ async def _ping_file(path: Path, verbose: bool) -> int:
     print(f"POST {TINEYE_URL} (multipart, {len(image_bytes)} bytes, filename={safe_filename!r})")
     if verbose:
         print(json.dumps({k: ("***" if k == "api_key" else v) for k, v in params.items()}, indent=2))
-    async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
-        resp = await client.post(
-            TINEYE_URL,
-            params=params,
-            content=body,
-            headers={"Content-Type": content_type},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
+            resp = await client.post(
+                TINEYE_URL,
+                params=params,
+                content=body,
+                headers={"Content-Type": content_type},
+            )
+    except httpx.HTTPError as exc:
+        print(f"error: network failure: {exc}", file=sys.stderr)
+        return 1
     return _report(resp)
 
 

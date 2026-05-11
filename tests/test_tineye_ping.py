@@ -89,6 +89,26 @@ def test_file_ping_posts_multipart(tineye_creds, tmp_path, image_bytes_red, caps
 
 
 @respx.mock
+def test_url_ping_returns_1_on_network_error(tineye_creds, capsys):
+    respx.get(TINEYE_URL).mock(side_effect=httpx.ConnectError("dns boom"))
+    rc = main(["--image-url", "https://me.example/me.jpg"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "network failure" in captured.err
+    assert "dns boom" in captured.err
+
+
+@respx.mock
+def test_file_ping_returns_1_on_network_error(tineye_creds, tmp_path, image_bytes_red, capsys):
+    img = tmp_path / "me.png"
+    img.write_bytes(image_bytes_red)
+    respx.post(TINEYE_URL).mock(side_effect=httpx.ReadTimeout("slow"))
+    rc = main(["--file", str(img)])
+    assert rc == 1
+    assert "network failure" in capsys.readouterr().err
+
+
+@respx.mock
 def test_verbose_masks_api_key(tineye_creds, capsys):
     respx.get(TINEYE_URL).mock(
         return_value=httpx.Response(200, json={"code": 200, "results": {"matches": []}})
