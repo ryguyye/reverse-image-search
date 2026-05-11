@@ -22,7 +22,7 @@ This tool is intentionally scoped to monitoring images you own or have rights to
 | Google Lens | SerpAPI (`engine=google_lens`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
 | Yandex Images | SerpAPI (`engine=yandex_images`) | Public image URL | Enabled when `SERPAPI_KEY` is set |
 | Bing Reverse Image | SerpAPI (`engine=bing_reverse_image`) | Public image URL | Enabled when `SERPAPI_KEY` is set. **Experimental** — Microsoft retired the official Bing Visual Search API in 2025; results come from SerpAPI scraping Bing's public UI and may break upstream. |
-| TinEye | Direct API (HMAC-signed) | Upload or URL | Enabled when `TINEYE_API_KEY` and `TINEYE_PRIVATE_KEY` are set. **Experimental** — signing follows TinEye's documented spec but has not been validated against live credentials. |
+| TinEye | Direct API (HMAC-signed) | Upload or URL | Enabled when `TINEYE_API_KEY` and `TINEYE_PRIVATE_KEY` are set. **Experimental** — signing follows TinEye's documented spec but Anthropic does not have live credentials to validate it end-to-end. Run `make tineye-ping ARGS="--image-url <url>"` to verify your own keys in 30 seconds. |
 
 Only providers with credentials configured will run. If none are configured, the API returns 503.
 
@@ -36,7 +36,7 @@ cp .env.example .env       # edit and add SERPAPI_KEY
 make dev                   # http://localhost:8000
 ```
 
-Other targets: `make run` (production-ish, with proxy headers), `make tunnel` (Cloudflare quick tunnel), `make test` (lint + pytest), `make clean`.
+Other targets: `make run` (production-ish, with proxy headers), `make tunnel` (Cloudflare quick tunnel), `make tineye-ping ARGS=...` (one-shot live TinEye credential check), `make test` (lint + pytest), `make clean`.
 
 Docker:
 
@@ -168,4 +168,4 @@ static/index.html    # Upload UI
 
 ## Roadmap
 
-- End-to-end validation of TinEye against live credentials
+The roadmap is currently empty — open an issue if there's a feature you want.
