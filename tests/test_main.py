@@ -113,6 +113,35 @@ def test_upload_duplicate_with_force_succeeds(temp_db, image_bytes_red):
     assert forced.json()["name"] == "second"
 
 
+def test_duplicate_409_cleans_up_orphaned_upload(temp_db, image_bytes_red, monkeypatch, tmp_path):
+    """When the second upload is rejected, its file should not linger on disk."""
+    from selfwatch import main
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    monkeypatch.setattr(main, "UPLOAD_DIR", uploads)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/watches",
+            data={"name": "first", "cadence_minutes": "10"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+        assert first.status_code == 201
+        files_after_first = set(uploads.iterdir())
+        assert len(files_after_first) == 1
+
+        second = client.post(
+            "/api/watches",
+            data={"name": "second", "cadence_minutes": "10"},
+            files={"file": ("me.png", image_bytes_red, "image/png")},
+        )
+        assert second.status_code == 409
+
+    # The duplicate attempt should not have left behind a second upload file.
+    assert set(uploads.iterdir()) == files_after_first
+
+
 def test_distinct_uploads_both_succeed(temp_db, image_bytes_red, image_bytes_blue):
     with TestClient(app) as client:
         first = client.post(

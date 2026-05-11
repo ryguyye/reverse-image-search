@@ -167,6 +167,13 @@ async def create_watch(
 
     image_phash = compute_phash(image_bytes) if image_bytes else None
 
+    def _cleanup_orphan() -> None:
+        if image_filename:
+            try:
+                (UPLOAD_DIR / image_filename).unlink(missing_ok=True)
+            except OSError:
+                pass
+
     try:
         return watches.create(
             name=name,
@@ -179,6 +186,7 @@ async def create_watch(
             force=force,
         )
     except watches.DuplicateWatchError as exc:
+        _cleanup_orphan()
         raise HTTPException(
             status_code=409,
             detail={
@@ -190,6 +198,7 @@ async def create_watch(
             },
         ) from exc
     except ValueError as exc:
+        _cleanup_orphan()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
