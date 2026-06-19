@@ -1,46 +1,26 @@
-# fly.toml — deploys the existing Dockerfile to Fly.io.
+# fly.toml app configuration file generated for reverse-image-search on 2026-06-19T18:21:06Z
 #
-# First-time setup (one-time):
-#   brew install flyctl                       # or: curl -L https://fly.io/install.sh | sh
-#   fly auth login
-#   fly launch --copy-config --name <YOUR-APP-NAME> --no-deploy
-#   fly volumes create selfwatch_data -r iad -s 1   # 1 GB persistent volume
-#   fly secrets set SERPAPI_KEY=...                 # optional: enable providers
-#   fly deploy
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-# `fly launch` will edit this file in place — replace `app` with the slug
-# Fly assigns you, and pick a region near you for `primary_region`.
 
-app = "selfwatch"          # change to your fly app slug
-primary_region = "iad"      # change to your region (sjc, lhr, fra, syd, etc.)
+app = 'reverse-image-search'
+primary_region = 'lax'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
-# The Dockerfile already sets DB_PATH=/app/data/selfwatch.db and
-# UPLOADS_DIR=/app/data/uploads, so we just need the volume at /app/data.
 [[mounts]]
-  source = "selfwatch_data"
-  destination = "/app/data"
+  source = 'selfwatch_data'
+  destination = '/app/data'
 
 [http_service]
-  internal_port = 8000
+  internal_port = 8080
   force_https = true
-  # Keep one machine running so the in-process scheduler keeps ticking
-  # for recurring scans. Set min_machines_running = 0 if you only want
-  # the ad-hoc /api/scan endpoint and don't care about watch cadences —
-  # that drops the cost to (near) zero, but watches won't run unless
-  # someone hits the app.
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["app"]
+  processes = ['app']
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-
-# selfwatch reads PUBLIC_BASE_URL to construct upload URLs the scheduler
-# can hand to SerpAPI. After your first deploy, fly will show you the
-# hostname — set it via `fly secrets set PUBLIC_BASE_URL=https://<app>.fly.dev`
-# and redeploy.
+  size = 'shared-cpu-1x'
+  memory = '512mb'
