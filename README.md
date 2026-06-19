@@ -45,7 +45,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-State (DB + uploads) lives on a named volume; the container runs as non-root and ships with a healthcheck. See [docs/deploy.md](docs/deploy.md) for the full deployment guide including the optional cloudflared sidecar.
+State (DB + uploads) lives on a named volume; the container runs as non-root and ships with a healthcheck. See [docs/deploy.md](docs/deploy.md) for the full deployment guide including Fly.io and the optional cloudflared sidecar.
+
+> **Don't deploy to Cloudflare Workers.** Workers can't run FastAPI + SQLite + the in-process scheduler. The deploy will appear to succeed but only the static page is served; every `/api/*` call returns an empty body. Use Fly.io (`fly deploy`), Docker on a VPS, or `make tunnel` for a quick local test.
 
 ## Uploading vs. providing a URL
 

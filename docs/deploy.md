@@ -1,5 +1,28 @@
 # Deploying selfwatch
 
+> **Heads up — Cloudflare Workers won't run this app.** selfwatch is FastAPI + uvicorn + SQLite + an in-process scheduler. Workers is a V8/Pyodide isolate runtime with no long-running tasks, no SQLite, and no persistent filesystem. If you point a Workers / Pages auto-deploy at this repo it will *appear* to succeed and serve the static `index.html`, but every `/api/*` call returns an empty body (you'll see `Failed to load providers` in the UI). Use one of the runtimes below instead.
+
+## Fly.io (recommended for "always-on, no laptop")
+
+Fly runs the existing Dockerfile directly. Sets you up with a permanent `https://<app>.fly.dev` URL, free TLS, and a persistent volume for SQLite + uploads. Costs ~$2/mo for the always-on machine that keeps the scheduler ticking, or $0 if you let it auto-stop and don't care about recurring scans.
+
+```bash
+brew install flyctl                       # or: curl -L https://fly.io/install.sh | sh
+fly auth login
+fly launch --copy-config --no-deploy      # edits fly.toml in place
+fly volumes create selfwatch_data -r iad -s 1
+fly secrets set SERPAPI_KEY=your_key      # optional, enables providers
+fly deploy
+fly secrets set PUBLIC_BASE_URL=https://<app>.fly.dev   # after deploy
+fly deploy                                # second deploy picks up the URL
+```
+
+`fly.toml` is checked into the repo with sensible defaults. The Dockerfile env vars (`DB_PATH=/app/data/selfwatch.db`, `UPLOADS_DIR=/app/data/uploads`) line up with the volume mount at `/app/data`, so state survives restarts.
+
+To keep the Cloudflare workers.dev URL as the public face while Fly.io runs the backend, write a tiny Worker that `fetch()`es the Fly URL. Out of scope for this doc but trivial to wire up later.
+
+---
+
 ## Docker
 
 The fastest way to run selfwatch on a server.
