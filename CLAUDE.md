@@ -17,7 +17,7 @@ Everything in development goes through the Makefile:
 - `make test` — runs `ruff check src tests` then `pytest -q`
 - `make tineye-ping ARGS="--image-url <url>"` — one-shot HMAC-signed call against TinEye to verify keys
 
-Run a single test: `PYTHONPATH=src .venv/bin/pytest tests/test_watches.py::test_create_with_force_bypasses_duplicate_check -q`. CI (`.github/workflows/ci.yml`) runs the same three commands as `make test` plus a smoke `from selfwatch.main import app` import on Python 3.11.
+Run a single test: `PYTHONPATH=src .venv/bin/pytest tests/test_watches.py::test_create_with_force_bypasses_duplicate_check -q`. CI (`.github/workflows/ci.yml`) runs three steps on Python 3.11 — `ruff check src tests`, a smoke `from selfwatch.main import app` import, then `pytest -q`.
 
 Docker: `docker compose up -d --build`. The compose file pins `DB_PATH=/app/data/selfwatch.db` and `UPLOADS_DIR=/app/data/uploads` in its `environment:` block — those overrides matter because `env_file: .env` would otherwise leak the local-dev defaults into the container and silently move state off the named volume. Keep them in sync if you change the Dockerfile defaults.
 
@@ -40,7 +40,7 @@ The two SerpAPI providers require a **publicly reachable** image URL because Ser
 Watches live in SQLite (`db.py`, schema in module-level `SCHEMA` plus an idempotent `_MIGRATIONS` dict that `ALTER TABLE`s in new columns on startup — when adding a column, update both `SCHEMA` *and* `_MIGRATIONS` so existing DBs upgrade in place).
 
 Lifecycle:
-- `POST /api/watches` → `main.py` fetches/reads bytes → `image_utils.compute_phash` + `validate_fetch_url` (SSRF guard) → `watches.create` checks near-duplicates via `find_near_duplicate` (Hamming distance ≤ 10) → 409 with `force=true` override path. On 409 or 400 the upload file is unlinked to avoid orphans.
+- `POST /api/watches` → `main.py` reads upload bytes *or* calls `image_utils.fetch_image_bytes` (which runs `validate_fetch_url` first as the SSRF guard, then streams up to `MAX_FETCH_BYTES`) → `image_utils.compute_phash` on the bytes → `watches.create` checks near-duplicates via `find_near_duplicate` (Hamming distance ≤ 10) → 409 with `force=true` override path. On 409 or 400 the upload file is unlinked to avoid orphans.
 - `scheduler.loop` is an asyncio task started from FastAPI `lifespan`. It ticks every `SCHEDULER_TICK_SECONDS` (default 60), calls `watches.due(now)` (filters by `active=1` and cadence), and runs each due watch via `watches.run` which goes through `run_scan` → `record_matches` (canonical-URL diff against `seen_matches`) → fires `send_webhook` + `send_email` only on **new** URLs.
 - Tests patch `scheduler.loop` to a no-op via an **autouse** fixture in `tests/conftest.py` to keep the in-process scheduler from racing with `TestClient` lifespan during tests. Keep this fixture if you add scheduler-related tests.
 
